@@ -27,7 +27,8 @@
       <div class="countdown-section">
         <div v-for="(item, index) in countdownItems" 
              :key="`countdown-${index}`"
-             class="countdown-item">
+             class="countdown-item"
+             :class="{ 'custom-countdown': item.type === 'custom' }">
           <div class="item-header">
             <div class="left-info">
               <span class="name">距离{{ item.name }}</span>
@@ -36,7 +37,10 @@
             <span class="target-date">{{ formatDate(item.targetDate) }}</span>
           </div>
           <div class="countdown-info">
-            <div class="time-blocks">
+            <div v-if="item.type === 'custom'" class="days-only">
+              还剩 {{ item.days }} 天
+            </div>
+            <div v-else class="time-blocks">
               <span class="time-block">{{ item.days }}<small>天</small></span>
               <span class="time-block">{{ item.hours }}<small>时</small></span>
               <span class="time-block">{{ padZero(item.minutes) }}<small>分</small></span>
@@ -79,25 +83,133 @@ export default {
                 { name: '月初', type: 'passed' },
                 { name: '年初', type: 'passed' }
             ],
-            currentTime: ''
+            currentTime: '',
+            customItems: []
         }
     },
     computed: {
         countdownItems() {
-            return this.dateItems.filter(item => item.type !== 'passed')
+            const customCountdowns = this.customItems.map(item => ({
+                name: item.name,
+                targetDate: item.targetDate,
+                days: Math.ceil((item.targetDate - new Date()) / (1000 * 60 * 60 * 24)),
+                type: 'custom'
+            }))
+            
+            return [
+                ...this.dateItems.filter(item => item.type !== 'passed'),
+                ...customCountdowns
+            ].sort((a, b) => (a.targetDate || 0) - (b.targetDate || 0))
         },
         progressItems() {
             return this.dateItems.filter(item => item.type === 'passed')
         }
     },
     created() {
-        this.calculateDates()
-        this.timer = setInterval(() => {
+        this.loadCustomSettings().then(() => {
             this.calculateDates()
-            this.updateCurrentTime()
-        }, 1000)
+            this.timer = setInterval(() => {
+                this.calculateDates()
+                this.updateCurrentTime()
+            }, 1000)
+        })
     },
     methods: {
+        loadCustomSettings() {
+            return new Promise((resolve) => {
+                // 检查 chrome.storage 是否可用
+                if (!chrome?.storage?.sync) {
+                    console.warn('Chrome storage API 不可用，跳过加载自定义设置');
+                    resolve();
+                    return;
+                }
+
+                try {
+                    chrome.storage.sync.get(['payday', 'birthdays'], (settings) => {
+                        if (chrome.runtime.lastError) {
+                            console.error('读取存储时出错:', chrome.runtime.lastError);
+                            resolve();
+                            return;
+                        }
+
+                        this.customItems = [];
+
+                        // 处理发薪日
+                        if (settings?.payday) {
+                            try {
+                                this.customItems.push(this.createPaydayItem(settings.payday));
+                            } catch (err) {
+                                console.error('处理发薪日数据出错:', err);
+                            }
+                        }
+
+                        // 处理生日提醒
+                        if (settings?.birthdays?.length) {
+                            settings.birthdays.forEach(birthday => {
+                                try {
+                                    if (birthday?.name && birthday?.date) {
+                                        this.customItems.push(this.createBirthdayItem(birthday));
+                                    }
+                                } catch (err) {
+                                    console.error('处理生日数据出错:', err, birthday);
+                                }
+                            });
+                        }
+
+                        resolve();
+                    });
+                } catch (err) {
+                    console.error('访问 Chrome storage 时出错:', err);
+                    resolve();
+                }
+            });
+        },
+
+        createPaydayItem(payday) {
+            const now = new Date();
+            let targetDate = new Date(now.getFullYear(), now.getMonth(), payday);
+            
+            // 如果今天已经过了这个月的发薪日，计算下个月的
+            if (now > targetDate) {
+                targetDate = new Date(now.getFullYear(), now.getMonth() + 1, payday);
+            }
+
+            return {
+                name: '发薪日',
+                targetDate,
+                type: 'custom',
+                days: Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24))
+            };
+        },
+
+        createBirthdayItem(birthday) {
+            const now = new Date();
+            const birthdayDate = new Date(birthday.date);
+            
+            // 设置今年的生日日期
+            let targetDate = new Date(
+                now.getFullYear(),
+                birthdayDate.getMonth(),
+                birthdayDate.getDate()
+            );
+            
+            // 如果今年的生日已过，设置为明年的生日
+            if (now > targetDate) {
+                targetDate = new Date(
+                    now.getFullYear() + 1,
+                    birthdayDate.getMonth(),
+                    birthdayDate.getDate()
+                );
+            }
+
+            return {
+                name: `${birthday.name}生日`,
+                targetDate,
+                type: 'custom',
+                days: Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24))
+            };
+        },
+
         getTraditionalFestivals() {
             const now = new Date()
             const currentYear = now.getFullYear()
@@ -894,5 +1006,71 @@ body {
 .content-wrapper {
   position: relative;
   z-index: 1;
+}
+
+/* 自定义倒计时的特殊样式 */
+.custom-countdown {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.8));
+  border: 1px solid rgba(236, 72, 153, 0.2);
+}
+
+.custom-countdown .item-header {
+  border-bottom: 1px solid rgba(236, 72, 153, 0.1);
+  padding-bottom: 8px;
+}
+
+.custom-countdown .target-date {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(244, 114, 182, 0.1));
+  color: #ec4899;
+}
+
+.days-only {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ec4899;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(244, 114, 182, 0.1));
+  padding: 8px 16px;
+  border-radius: 12px;
+  display: inline-block;
+  margin-top: 4px;
+  box-shadow: 
+    0 2px 8px rgba(236, 72, 153, 0.1),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.days-only::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0) 60%
+  );
+  transition: opacity 0.3s ease;
+}
+
+.custom-countdown:hover .days-only {
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(236, 72, 153, 0.15),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+/* 确保自定义倒计时的动画效果更柔和 */
+.custom-countdown {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.custom-countdown:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 20px rgba(236, 72, 153, 0.15),
+    inset 0 0 20px rgba(255, 255, 255, 0.5);
 }
 </style>
