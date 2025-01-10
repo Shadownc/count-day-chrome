@@ -92,7 +92,7 @@ export default {
             const customCountdowns = this.customItems.map(item => ({
                 name: item.name,
                 targetDate: item.targetDate,
-                days: Math.ceil((item.targetDate - new Date()) / (1000 * 60 * 60 * 24)),
+                days: Math.floor((item.targetDate - new Date()) / (1000 * 60 * 60 * 24)),
                 type: 'custom'
             }))
             
@@ -178,7 +178,7 @@ export default {
                 name: '发薪日',
                 targetDate,
                 type: 'custom',
-                days: Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24))
+                days: Math.floor((targetDate - now) / (1000 * 60 * 60 * 24))
             };
         },
 
@@ -206,7 +206,7 @@ export default {
                 name: `${birthday.name}生日`,
                 targetDate,
                 type: 'custom',
-                days: Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24))
+                days: Math.floor((targetDate - now) / (1000 * 60 * 60 * 24))
             };
         },
 
@@ -433,7 +433,7 @@ export default {
 
             const now = new Date()
             const diffTime = targetDate - now
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
             
             return {
                 name,
